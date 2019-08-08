@@ -1,5 +1,7 @@
 # Beam loading simulator
-This containes the code for the web app which produces the shear and bending moment diagram of a beam subjected to external loads. There are three main parts: the Solver, the assets and the app. 
+This containes the code for the web app which produces the shear and bending moment diagram of a beam subjected to external loads. There are three main parts: the Solver, the assets and the app.  The web app is given below:
+
+https://cr-beam-loads.herokuapp.com/
 
 The Solver contains functions which calculates the internal shear force, the internal moments, and the reaction loads. It can solve for a cantilever and a simply supported beam. The solver accepts loads a symbolic functions defined using sympy library and calculates the answer analylically. This ensures that the calculations have zero error. On the other hand, the solver becomes slow as the number of input loads increases. This may be mitigated using a numerical solver and this is suggested for future work. The solver can accept any kind of load as long as it can be analytically defined. 
 
