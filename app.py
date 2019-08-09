@@ -15,8 +15,6 @@ import pandas as pd
 from Solver import *
 from assets import *
 
-
-#external_stylesheets = ['https://codepen.io/amyoshino/pen/jzXypZ.css']
 external_stylesheets = ['style.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
@@ -516,7 +514,7 @@ help_popup_div = html.Div([  # modal div
                                    html.Div([
                                             '''Step 1: Choose the type of beam from the 'Select beam' dropdown box''',
                                             html.Br(),
-                                            '''Step 2: Sepcifiy the beam length and choose the position of the support 
+                                            '''Step 2: Specify the beam length and choose the position of the support 
                                             for a cantilever or specify the position of the pin and roller supports''',
                                             html.Br(),
                                             '''Step 3: Add loads. Select the type of load using the select loads 
@@ -530,7 +528,10 @@ help_popup_div = html.Div([  # modal div
                                             html.Br(),
                                             '''Step 6: Click the update button to update the figure''',
                                             html.Br(),
-                                            '''If there are errors they will be shown above or under the figure'''
+                                            '''If there are errors they will be shown above or under the figure''',
+                                            html.Br(),
+                                            '''The code for this app can be found '''
+                                            ,html.A('here', href='https://github.com/rohitkjohn/CR_beam_diagram')
                                             ],
                                             style = {'textAlign' : 'left'}
                                            ),
@@ -982,8 +983,8 @@ def update_graph(n_clicks, \
                               float(val['point value']), 
                               float(val['point position'])
                              ])
-                if float(val['point value']) > point_force_max:
-                    point_force_max = float(val['point value'])
+                if abs(float(val['point value'])) > point_force_max:
+                    point_force_max = abs(float(val['point value']))
 
         if val['type'] == 'point moment':
             # This condition becomes true when the lenght of the beam is reduced while the data table does not change
@@ -1001,8 +1002,8 @@ def update_graph(n_clicks, \
                               float(val['point value']), 
                               float(val['point position'])
                              ])
-                if float(val['point value']) > point_moment_max:
-                    point_moment_max = float(val['point value'])
+                if abs(float(val['point value'])) > point_moment_max:
+                    point_moment_max = abs(float(val['point value']))
 
         if val['type'] == 'distributed force':
             cond1 = float(val['start position']) > beam_len
@@ -1031,6 +1032,13 @@ def update_graph(n_clicks, \
                 if max_mag > dist_force_max:
                     dist_force_max = max_mag
 
+    # This scales the two types of forces relative to each other
+    if dist_force_max > point_force_max:
+        point_force_max = dist_force_max
+
+    else:
+        dist_force_max = point_force_max
+
     # Load function definition
     # This creates the functions which define the loads acting on the beam and the
     # items which represent the functions in the figure 
@@ -1043,7 +1051,7 @@ def update_graph(n_clicks, \
                                                val[1],                                   # x position of the load, X position of the arrow head
                                                beam_len/100,                             # Y position of the arrow head
                                                val[1],                                   # X position of the arrow tail
-                                               (val[0]/point_force_max)*(beam_len*3/10), # Y position of the arrow tail
+                                               abs((val[0]/point_force_max)*(beam_len*3/10)), # Y position of the arrow tail
                                                width = 2, 
                                                head_angle = 20, 
                                                head_scale = 0.3
@@ -1054,11 +1062,12 @@ def update_graph(n_clicks, \
                                                val[1],                                    # x position of the load, X position of the arrow head
                                                -beam_len/100,                             # Y position of the arrow head
                                                val[1],                                    # X position of the arrow tail
-                                               -(val[0]/point_force_max)*(beam_len*3/10), # Y position of the arrow tail
+                                               -abs((val[0]/point_force_max)*(beam_len*3/10)), # Y position of the arrow tail
                                                width = 2, 
                                                head_angle = 20, 
                                                head_scale = 0.3
-                                               ) # adapt for beam length
+                                               ) 
+           
 
         # Mesh refinement
         refinement = refinement + [val[1] - 0.000001, val[1] + 0.000001]
@@ -1070,8 +1079,8 @@ def update_graph(n_clicks, \
             arr_x, arr_y = dirc_arrow(
                                      val[1],                                    # X coordinate of centre
                                      0,                                         # Y coordinate of centre
-                                     (beam_len/20)*(val[0]/point_moment_max),   # X radius
-                                     (beam_len/10)*(val[0]/point_moment_max),   # Y radius.
+                                     abs((beam_len/20)*(val[0]/point_moment_max)),   # X radius
+                                     abs((beam_len/10)*(val[0]/point_moment_max)),   # Y radius.
                                      # Due to the axis scaling x radius and y radius are note same. This way they appear circular
                                      20,                                        # Number of points
                                      "CCW"                                      # Direction of moment
@@ -1082,8 +1091,8 @@ def update_graph(n_clicks, \
             arr_x, arr_y = dirc_arrow(
                                      val[1],                                    # X coordinate of centre
                                      0,                                         # Y coordinate of centre
-                                     (beam_len/20)*(val[0]/point_moment_max),   # X radius
-                                     (beam_len/10)*(val[0]/point_moment_max),   # Y radius.
+                                     abs((beam_len/20)*(val[0]/point_moment_max)),   # X radius
+                                     abs((beam_len/10)*(val[0]/point_moment_max)),   # Y radius.
                                      # Due to the axis scaling x radius and y radius are note same. This way they appear circular
                                      20,                                        # Number of points
                                      "CW"                                      # Direction of moment
