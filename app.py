@@ -3,6 +3,7 @@ import dash_core_components as dcc
 import dash_html_components as html
 from dash.dependencies import Input, Output, State
 import dash_table as dt
+import time
 
 from plotly import tools
 import plotly.plotly as py
@@ -15,6 +16,8 @@ import pandas as pd
 from Solver import *
 from assets import *
 
+
+#external_stylesheets = ['https://codepen.io/amyoshino/pen/jzXypZ.css']
 external_stylesheets = ['style.css']
 app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
@@ -514,7 +517,7 @@ help_popup_div = html.Div([  # modal div
                                    html.Div([
                                             '''Step 1: Choose the type of beam from the 'Select beam' dropdown box''',
                                             html.Br(),
-                                            '''Step 2: Specify the beam length and choose the position of the support 
+                                            '''Step 2: Specifiy the beam length and choose the position of the support 
                                             for a cantilever or specify the position of the pin and roller supports''',
                                             html.Br(),
                                             '''Step 3: Add loads. Select the type of load using the select loads 
@@ -941,6 +944,9 @@ def update_graph(n_clicks, \
                 ):
 
     # Initialisation
+    # Each point force, moment and distributed force will produce a shear force and bending moment across the beam. These (shear and bending moment) are defined by functions
+    # These functions are obtained using standard equations. These functions, produced by each load, are added together to get the final shear force and bending moment diagrams
+
     def_PF = []         # This stores the magnitude and position of the point force
     def_PM = []         # This stores the magnitude and position of the point moment
     def_DF = []         # This stores the start and end magnitude and start and end position of the distributed force
@@ -958,6 +964,20 @@ def update_graph(n_clicks, \
     point_force_function = 0    # This stores the function which defines all the point forces acting on the beam
     point_moment_function = 0   # This stores the function which defines all the point moment acting on the beam
     dist_force_function = 0     # This stores the function which defines all the distributed force acting on the beam
+
+    total_force  = 0            # This stores the total external load applied on the beam. Does not include the reaction force. update 1.2
+    total_moment_l = 0          # This stores the total moment acting on the beam at origin (x = 0). Does not include the reaction forces. update 1.2     
+    total_moment_r = 0          # This stores the total moment acting on the beam at the other end of the beam (x = beam length). Does not include the reaction forces. update 1.2     
+
+    shear_function = 0          # This will store the shear function, calculated using standard integration results instead of brute force integration using the force_sum(). update 1.2
+    bending_moment_function = 0 # This will store the bending moment function, calculated using standard integration results instead of brute force integration using the moment_sum(). update 1.2
+
+    f_f_CL  = 0 # Storer the cantilever reaction force shear function
+    f_m_CL  = 0 # Storer the cantilever reaction moment function
+    f_f_SSB_p = 0 # Stores the pin shear force function
+    f_f_SSB_r = 0 # Stores the roller shear force
+    f_m_SSB_p = 0 # Stores the pin bending moment function
+    f_m_SSB_r = 0 # Stores the roller bending moment function
 
     # This block of code extracts the lenght of the beam
     if beam_type == "CL":
@@ -979,12 +999,31 @@ def update_graph(n_clicks, \
                                             ' Please remove from table\n']
 
             else:
+                point_val = float(val['point value'])
+                point_pos = float(val['point position'])
                 def_PF.append([
-                              float(val['point value']), 
-                              float(val['point position'])
+                              point_val, 
+                              point_pos
                              ])
-                if abs(float(val['point value'])) > point_force_max:
-                    point_force_max = abs(float(val['point value']))
+                if point_val > point_force_max:
+                    point_force_max = point_val
+
+                # This adds this point load to the net external forces acting on the beam
+                total_force = total_force + point_val
+
+                # This adds the moment produced by this force to the net external moment about the left end (l) and the right end (r)
+                total_moment_l = total_moment_l + (0        - point_pos)*point_val
+                total_moment_r = total_moment_r + (beam_len - point_pos)*point_val
+
+                shear_function = shear_function + point_val*sp.Heaviside(y - point_pos)
+                # The standard integral of the Dirac delta function (delta(x)) is the Heaviside function (H(x)). Shear produced by this force is found by
+                # integrating the point force function from 0 to y, where y is the location where shear is to be calculated. This is then added to the 
+                # Total shear experienced by the beam
+
+                bending_moment_function = bending_moment_function + point_val*sp.Heaviside(y - point_pos)*(y - point_pos)
+                # The standard integral of the (delta(x - x0)(y - x)) is the Heaviside function (H(y - x0)(y - x0)). The bending moment acting on the 
+                # beam is calculated by integrating the force function, (function of dummy position x) times (y - x). where y is the location where
+                # bending moment is to be calculated. This is then added to the total bending moment experienced by the beam
 
         if val['type'] == 'point moment':
             # This condition becomes true when the lenght of the beam is reduced while the data table does not change
@@ -998,12 +1037,20 @@ def update_graph(n_clicks, \
                                          ' Please remove from table\n'
                                         ]
             else:
+                point_val = float(val['point value'])
+                point_pos = float(val['point position'])
                 def_PM.append([
-                              float(val['point value']), 
-                              float(val['point position'])
+                              point_val, 
+                              point_pos
                              ])
-                if abs(float(val['point value'])) > point_moment_max:
-                    point_moment_max = abs(float(val['point value']))
+                if point_val > point_moment_max:
+                    point_moment_max = point_val
+
+                # This adds the moment produced by this force to the net external moment about the left end (l) and the right end (r)
+                total_moment_l = total_moment_l + point_val
+                total_moment_r = total_moment_r + point_val
+
+                bending_moment_function = bending_moment_function + point_val*sp.Heaviside(y - point_pos)
 
         if val['type'] == 'distributed force':
             cond1 = float(val['start position']) > beam_len
@@ -1018,19 +1065,39 @@ def update_graph(n_clicks, \
                                         ]
 
             else:
+                x1 = float(val['start position'])
+                x2 = float(val['end position'])
+                y1 = float(val['start value'])
+                y2 = float(val['end value'])
+
                 def_DF.append([
-                                  [float(val['start value']), float(val['end value'])], 
-                                  [float(val['start position']), float(val['end position'])]
+                                  [y1, y2], 
+                                  [x1, x2]
                              ])
                 max_mag = max(
-                             abs(float(val['start value'])), 
-                             abs(float(val['end value']))
+                             abs(y1), 
+                             abs(y2)
                              )
                 # The following line is used to find the max value of the distributed force
                 # This is used to scale all the other forces so that they can be displayed in the
                 # figure  
                 if max_mag > dist_force_max:
                     dist_force_max = max_mag
+
+                total_force = total_force + 1/2*(abs(x1 - x2))*(y1 + y2)
+                 # Area of a trapezium formula is used to calculate the total force exerted by the distributed load
+
+                total_moment_l = total_moment_l + 1/6*(x1 - x2)*(x1*(2*y1 + y2) + x2*(y1 + 2*y2))
+                total_moment_r = total_moment_r + 1/6*(x1 - x2)*(x1*(2*y1 + y2) + x2*(y1 + 2*y2) - 3*beam_len*(y1 + y2))
+
+                shear_function = shear_function + dist_shear(x1, y1, x2, y2, y)
+                # Shear produced by this force is found by integrating the dist force function from 0 to y, where y is the location where
+                # shear is to be calculated. This is then added to the total shear experienced by the beam. This integral is precalculated and the result
+                # can be accessed using the dist_shear() function 
+
+                bending_moment_function = bending_moment_function + dist_moment(x1, y1, x2, y2, y)                
+                # The bending moment acting on the beam is calculated by integrating the force function, (function of dummy position x)
+                # times (y - x). where y is the location where bending moment is to be calculated. This is then added to the total bending moment experienced by the beam
 
     # This scales the two types of forces relative to each other
     if dist_force_max > point_force_max:
@@ -1039,19 +1106,17 @@ def update_graph(n_clicks, \
     else:
         dist_force_max = point_force_max
 
-    # Load function definition
-    # This creates the functions which define the loads acting on the beam and the
-    # items which represent the functions in the figure 
+    # Load markers definition
+    # Creates the items (arrows) which represent the functions in the figure 
     for val in def_PF:
-        point_force_function = point_force_function + val[0]*sp.DiracDelta(x - val[1])
-
+        
         # The following block defines the arrows which will represent the point forces
         if val[0] > 0:
             force_arrows = force_arrows + arrow(
                                                val[1],                                   # x position of the load, X position of the arrow head
                                                beam_len/100,                             # Y position of the arrow head
                                                val[1],                                   # X position of the arrow tail
-                                               abs((val[0]/point_force_max)*(beam_len*3/10)), # Y position of the arrow tail
+                                               (val[0]/point_force_max)*(beam_len*3/10), # Y position of the arrow tail
                                                width = 2, 
                                                head_angle = 20, 
                                                head_scale = 0.3
@@ -1062,25 +1127,23 @@ def update_graph(n_clicks, \
                                                val[1],                                    # x position of the load, X position of the arrow head
                                                -beam_len/100,                             # Y position of the arrow head
                                                val[1],                                    # X position of the arrow tail
-                                               -abs((val[0]/point_force_max)*(beam_len*3/10)), # Y position of the arrow tail
+                                               (val[0]/point_force_max)*(beam_len*3/10), # Y position of the arrow tail
                                                width = 2, 
                                                head_angle = 20, 
                                                head_scale = 0.3
-                                               ) 
-           
-
+                                               ) # adapt for beam length
+        
         # Mesh refinement
         refinement = refinement + [val[1] - 0.000001, val[1] + 0.000001]
 
     for val in def_PM:
-        point_moment_function = point_moment_function + val[0]*sp.DiracDelta(x - val[1])
         # This defines the arrows for the moments
         if val[0] > 0:
             arr_x, arr_y = dirc_arrow(
                                      val[1],                                    # X coordinate of centre
                                      0,                                         # Y coordinate of centre
-                                     abs((beam_len/20)*(val[0]/point_moment_max)),   # X radius
-                                     abs((beam_len/10)*(val[0]/point_moment_max)),   # Y radius.
+                                     (beam_len/20)*(val[0]/point_moment_max),   # X radius
+                                     (beam_len/10)*(val[0]/point_moment_max),   # Y radius.
                                      # Due to the axis scaling x radius and y radius are note same. This way they appear circular
                                      20,                                        # Number of points
                                      "CCW"                                      # Direction of moment
@@ -1091,8 +1154,8 @@ def update_graph(n_clicks, \
             arr_x, arr_y = dirc_arrow(
                                      val[1],                                    # X coordinate of centre
                                      0,                                         # Y coordinate of centre
-                                     abs((beam_len/20)*(val[0]/point_moment_max)),   # X radius
-                                     abs((beam_len/10)*(val[0]/point_moment_max)),   # Y radius.
+                                     (beam_len/20)*(val[0]/point_moment_max),   # X radius
+                                     (beam_len/10)*(val[0]/point_moment_max),   # Y radius.
                                      # Due to the axis scaling x radius and y radius are note same. This way they appear circular
                                      20,                                        # Number of points
                                      "CW"                                      # Direction of moment
@@ -1102,11 +1165,6 @@ def update_graph(n_clicks, \
         refinement = refinement + [val[1] - 0.000001, val[1] + 0.000001]
 
     for val in def_DF:
-        dist_force_function = dist_force_function + PW_lerp(
-                                                           val[1][0], val[0][0], #(start pos, start mag)
-                                                           val[1][1], val[0][1], #(end pos, end mag)
-                                                           x
-                                                           )
         arr_x, arr_y = dist_force_marker_func(
                                         val[1][0], 
                                         val[1][1], 
@@ -1119,8 +1177,6 @@ def update_graph(n_clicks, \
         # Mesh refinement
         refinement = refinement + [val[1][0] - 0.000001, val[1][0] + 0.000001, val[1][1] - 0.000001, val[1][1] + 0.000001]
     # This stores the function which defines all the loads acting on the beam
-    force_function = point_force_function + dist_force_function 
-    moment_function = point_moment_function
     
     # Generate graph
         # If selected type is cantilever
@@ -1130,22 +1186,21 @@ def update_graph(n_clicks, \
 
         # Calculating the reaction force and moment
         if beam_BC == 'L':
-            r_f, r_m, r_t = cantilever_solver(moment_function, force_function, [], x, beam_len, BC = 'L')
-            f_f_CL = r_f*sp.DiracDelta(x)   # This function refines the reaction force at the boundary for the cantilever
-            f_m_CL = r_m*sp.DiracDelta(x)   # This function refines the reaction moment at the boundary for the cantilever
+            r_f = -total_force               # Reaction force is simply the negative of the net external force
+            r_m = -total_moment_l            # Reaction force is simply the negative of the net external moment at the left end
+            f_f_CL = r_f*sp.Heaviside(y)   # This function refines the reaction force at the boundary for the cantilever 
+            f_m_CL = r_m*sp.Heaviside(y)   +  r_f*sp.Heaviside(y)*(y)# This function refines the reaction moment at the boundary for the cantilever
             refinement = refinement + [0.0001]
 
         elif beam_BC == 'R':
-            r_f, r_m, r_t = cantilever_solver(moment_function, force_function, [], x, beam_len, BC = 'R')
-            f_f_CL = r_f*sp.DiracDelta(x - beam_len)   # This function refines the reaction force at the boundary for the cantilever
-            f_m_CL = r_m*sp.DiracDelta(x - beam_len)   # This function refines the reaction moment at the boundary for the cantilever
+            r_f = -total_force               # Reaction force is simply the negative of the net external force
+            r_m = -total_moment_r            # Reaction force is simply the negative of the net external moment at the right end
+            f_f_CL = r_f*sp.Heaviside(y - beam_len)   # This function refines the reaction force at the boundary for the cantilever
+            f_m_CL = r_m*sp.Heaviside(y - beam_len)   +   r_f*sp.Heaviside(y - beam_len)*(y - beam_len)# This function refines the reaction moment at the boundary for the cantilever
             refinement = refinement + [beam_len - 0.0001]
             
-        msg = ['The reaction force is: ' + str(round(r_f, 2))] + ['\nThe reaction moment is: ' + str(round(r_m,2))]
+        msg = ['The reaction force is: ' + str(round(r_f, 2))+'N'] + ['\nThe reaction moment is: ' + str(round(r_m,2)) + 'Nm']
 
-        # Denerating the data points for graph    
-        total_ext_force_func  = force_function + f_f_CL
-        total_ext_moment_func = moment_function + f_m_CL
 
         # ----------------------------------------------------------------------- Beam diagram
         if beam_BC == 'L':
@@ -1192,15 +1247,17 @@ def update_graph(n_clicks, \
                      [roller_pos - 0.00001, roller_pos, roller_pos + 0.00001]
 
         # calculating the reaction force
-        r_pin, r_roller = simply_supported_solver(moment_function, force_function, x, beam_len, pin_pos, roller_pos)
-        r_pin_func = r_pin*sp.DiracDelta(x - pin_pos)
-        r_roller_func = r_roller*sp.DiracDelta(x - roller_pos)
+        # The reaction forces at the pin and the roller are calculated by solving the net moment = 0 equation at the left and and the right end
+        # These two equations were solved and the expression for the reaction forces are used below
+        r_pin    = -((-(beam_len*total_moment_l) + roller_pos*total_moment_l - roller_pos*total_moment_r)/(beam_len*(pin_pos - roller_pos)))
+        r_roller = -((-(beam_len*total_moment_l) + pin_pos*total_moment_l    - pin_pos*total_moment_r)  /(beam_len*(-pin_pos + roller_pos)))
+
+        f_f_SSB_p = r_pin   *sp.Heaviside(y - pin_pos)    # Stores the pin reaction force function
+        f_f_SSB_r = r_roller*sp.Heaviside(y - roller_pos) # Stores the roller reaction force function
+        f_m_SSB_p = r_pin*   sp.Heaviside(y - pin_pos)   *(y - pin_pos) # Stores the pin bending moment function
+        f_m_SSB_r = r_roller*sp.Heaviside(y - roller_pos)*(y - roller_pos) # Stores the roller bending moment function
 
         msg = ["The pin reaction force is: " + str(round(r_pin,2))] + ["\nThe roller reaction force is: " + str(round(r_roller,2))]
-
-        # Calculating net force and moment on the beam
-        total_ext_force_func  = force_function + r_pin_func + r_roller_func
-        total_ext_moment_func = moment_function 
 
         # ----------------------------------------------------------------------- Beam diagram
         layout_beam_diagram = {
@@ -1212,8 +1269,11 @@ def update_graph(n_clicks, \
     # Calculating the shear force and the bending moment symbolic functions
     sign_conv = -1 # This gives the sign convention of the force and shear to the left
                    # . In This case, it is -ve of the global sign
-    v = sign_conv*force_sum(total_ext_force_func, x, y)
-    m = sign_conv*moment_sum(total_ext_moment_func, total_ext_force_func, x, y)
+    # v = sign_conv*force_sum(total_ext_force_func, x, y)
+    v = sign_conv*(f_f_CL + f_f_SSB_p + f_f_SSB_r + shear_function)
+
+    # m = sign_conv*moment_sum(total_ext_moment_func, total_ext_force_func, x, y)
+    m = sign_conv*(f_m_CL + bending_moment_function + f_m_SSB_p + f_m_SSB_r)
 
     # Calcating shear force and moment at discreet points
     x_pts = np.linspace(0, beam_len, 100)
@@ -1229,7 +1289,7 @@ def update_graph(n_clicks, \
                             x = x_pts,
                             y = shear_data,
                             name = "shear",
-                            line = {'color':'#ff6b6b'},
+                            line = {'color':'#a87dff'},
                             fill='tozerox'
                             )
     max_shear = max(shear_data)
@@ -1239,12 +1299,12 @@ def update_graph(n_clicks, \
                         max_shear + 0.05*(max_shear - min_shear)
                         ]
     print(shear_graph_range)
-    # ----------------------------------------------------------------------- Moment force diagram
+    # ----------------------------------------------------------------------- Moment force diagram  
     trace_moment = go.Scatter(
                                 x = x_pts,
                                 y = moment_data,
                                 name = "moment",
-                                line = {'color':'#1db1cf'},
+                                line = {'color':'#52ab64'},
                                 fill='tozerox'
                                 )
     max_moment = max(moment_data)
@@ -1295,8 +1355,8 @@ def update_graph(n_clicks, \
                         margin = {'l' : 50, 'r' : 20, 't' : 20, 'b' : 20}#dict(l=50, r=20, t=20, b=20)
                         )   
     fig['layout']['yaxis1'].update(title = "beam diagrams", range = [-beam_len/2,beam_len/2])     # This sets the y axis range for the beam figure
-    fig['layout']['yaxis2'].update(title = "Shear force diagrams", range = shear_graph_range)     # This sets the y axis range for the shear force fig
-    fig['layout']['yaxis3'].update(title = "Moment diagrams", range = moment_graph_range)         # This sets the y axis range for the bending moment fig
+    fig['layout']['yaxis2'].update(title = "Shear force diagrams [N]", range = shear_graph_range)     # This sets the y axis range for the shear force fig
+    fig['layout']['yaxis3'].update(title = "Moment diagrams [Nm]", range = moment_graph_range)         # This sets the y axis range for the bending moment fig
     fig['layout']['yaxis1'].update(showticklabels = False, showgrid = False, zeroline = False)    # Removes the grid from beam figure
 
     # return graph and error messages
@@ -1309,7 +1369,7 @@ def update_graph(n_clicks, \
         child_graph = html.Div([  dcc.Graph(id = "Shear", figure = fig)   ] + error_msg + msg)
         child_mess = "Updating graph"
         no_times_update = 1
-       
+      
     return child_graph, str(no_times_update)
 #----------------------------------------------------------------------------------------------------------------- Display message
 @app.callback(

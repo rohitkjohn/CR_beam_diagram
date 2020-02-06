@@ -305,3 +305,61 @@ def PW_lerp(x1, y1, x2, y2, x):
 
     return ans
 #>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> PW_lerp
+# dist_shear <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< dist_shear
+def dist_shear(x1, y1, x2, y2, x):
+    '''
+    returns returns the shear function of a distributed load
+    in the closed interval [x1, x2]. It is zero outside the interval [x1, x2]
+    x1: x position of the first point
+    y1: load of the first point
+    x2: x position of the second point
+    y2: load of the second point
+    x: the symbolic argument of the function which defines the interpolation
+    '''
+    if x1 == x2:
+        print('dist_shear error: x1 and x2 passed to this function are equal. Check input')
+        return
+
+    if x1 < x2:
+        ans = sp.Piecewise(
+                            (-((x1 - x2)*(y1 + y2))/2.0, x > x2),
+                            (0,                          x < x1),
+                            (((x - x1)*(x*y1 + x1*y1 - 2*x2*y1 - x*y2 + x1*y2))/(2.0*(x1 - x2)), True)
+                          )
+    if x2 < x1:
+        ans = sp.Piecewise(
+                            (-((x1 - x2)*(y1 + y2))/2.0, x > x1),
+                            (0,                          x < x2),
+                            (((x - x2)*(x*y1 + x2*y1 - 2*x1*y1 - x*y2 + x2*y2))/(2.0*(x2 - x1)), True)
+                          )
+    return ans
+# >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> dist_shear
+# dist_moment <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<< dist_moment
+def dist_moment(x1, y1, x2, y2, x):
+    '''
+    returns returns the bending moment function of a distributed load
+    in the closed interval [x1, x2]. It is zero outside the interval [x1, x2]
+    x1: x position of the first point
+    y1: load of the first point
+    x2: x position of the second point
+    y2: load of the second point
+    x: the symbolic argument of the function which defines the interpolation
+    '''
+    if x1 == x2:
+        print('dist_moment error: x1 and x2 passed to this function are equal. Check input')
+        return
+
+    if x1 < x2:
+        ans = sp.Piecewise(
+                            (((x1 - x2)*(-3*x*(y1 + y2) + x1*(2*y1 + y2) + x2*(y1 + 2*y2)))/6.0,  x > x2),
+                            (0,                          x < x1),
+                            ((((x1 - x)**2)*(-3*x2*y1 + x*(y1 - y2) + x1*(2*y1 + y2)))/(6.*(x1 - x2)), True)
+                          )
+    if x2 < x1:
+        ans = sp.Piecewise(
+                            (((x2 - x1)*(-3*x*(y1 + y2) + x2*(2*y1 + y2) + x1*(y1 + 2*y2)))/6.0,  x > x1),
+                            (0,                          x < x2),
+                            ((((x2 - x)**2)*(-3*x1*y1 + x*(y1 - y2) + x2*(2*y1 + y2)))/(6.*(x2 - x1)), True)
+                          )
+    return ans
+#>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>> dist_moment
