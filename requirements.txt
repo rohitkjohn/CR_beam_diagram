@@ -30,7 +30,7 @@ MarkupSafe==1.1.1
 more-itertools==7.2.0
 mpmath==1.1.0
 nbformat==4.4.0
-numpy==1.16.4
+numpy==1.22.0
 packaging==19.1
 pandas==0.24.2
 percy==2.0.2
